@@ -21,5 +21,9 @@ __pycache__/
 
 # Derived / regenerable
 output/
-data/parquet/
 charts/
+
+# Source documents (Treasury PDFs/DOCX — re-downloadable, not committed)
+data/Budget/
+data/MYEFO/
+data/Outcome/

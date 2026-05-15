@@ -76,7 +76,7 @@ uv sync                   # Install dependencies
 - **python-docx**: Parse `<w:tbl>` elements from BP1/FBO DOCX. Primary data-extraction library.
 - **pandas / numpy**: Data manipulation.
 - **pyarrow**: Parquet for cached/derived DataFrames.
-- **(plotting)** Plotting is deferred until needed. When added, prefer `mgplot` (`~/mgplot`); the full mgplot reference is in `~/MacroModels/CLAUDE.md`.
+- **mgplot**: Plotting wrapper over matplotlib (house style, footers, `finalise_plot`). Use raw matplotlib only when mgplot genuinely can't do the job, and only after agreeing with the user first. See `## Plotting`.
 
 ## Coding practice
 
@@ -91,7 +91,7 @@ uv sync                   # Install dependencies
 - Ruff for linting (config in `pyproject.toml` once initialised).
 - Wrap logic in functions; module-level code limited to imports, constants, and CLI entry points.
 - No magic numbers — named constants or function parameters.
-- Use `.loc[]` over `.at[]` (mypy preference, mirrors MacroModels).
+- Use `.loc[]` over `.at[]` (mypy preference).
 
 ## Data extraction conventions
 
@@ -103,6 +103,16 @@ When writing parsers in `src/data/`:
   - **BP1 DOCX:** only 2022-23, 2024-25, 2025-26, 2026-27. For other years the budget.gov.au server silently returns the *current* budget's DOCX, so DOCX URLs for older years are misleading. **For BP1, parse from PDF uniformly across all 17 budgets** — keeps the parser path consistent and avoids the trap.
 - **Filter layout tables.** Some `<w:tbl>` elements (DOCX) or pdfplumber-detected tables are styled boxes or chart layout grids rather than data tables. Detect heuristically (e.g. content doesn't contain expected aggregate labels) and skip rather than assuming every table is data.
 - **Preserve the year(s) as columns** in every returned DataFrame so multi-year frames concatenate cleanly. For BP1: keep both `budget_year` (which BP1 published the estimate) and `fiscal_year` (which year the estimate is *for*). For FBO: just `fiscal_year` (the year of the actual).
+
+## Plotting
+
+Use `mgplot`. Raw matplotlib only when mgplot genuinely can't do the job, and only after agreeing the approach with the user. Existing chart scripts in `src/charts/` are the reference for house conventions:
+
+- `import mgplot as mg`.
+- `mg.set_chart_dir(str(ROOT / "charts"))` once near the top of the script.
+- Build each layer as a `pd.Series`; the series `.name` becomes its legend label (prefix with `_` to suppress).
+- Layer by threading `ax` through successive `mg.line_plot(..., ax=ax, ...)` calls; the first call passes `ax=None`.
+- Close with `mg.finalise_plot(ax, title=..., ylabel=..., xlabel=..., rfooter=..., lfooter=..., legend=True, show=False)` — this writes the PNG.
 
 ## Git
 
