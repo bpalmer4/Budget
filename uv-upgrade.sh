@@ -6,4 +6,5 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 uv lock --upgrade
 uv sync --upgrade
-# to upgrade the version of python: uv venv -p 3.13.4
+# to pick up a new 3.14.x patch: uv python upgrade 3.14
+# to move to a new Python version: raise requires-python in pyproject.toml, then rm -rf .venv && uv sync

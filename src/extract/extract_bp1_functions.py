@@ -17,13 +17,14 @@ from src.utilities.paths import BUDGET_DIR, PARQUET_DIR
 def _discover_budgets() -> list[str]:
     if not BUDGET_DIR.is_dir():
         return []
-    return sorted(
-        d.name for d in BUDGET_DIR.iterdir()
-        if d.is_dir() and (d / "bp1.pdf").exists()
-    )
+    return sorted(d.name for d in BUDGET_DIR.iterdir() if d.is_dir() and (d / "bp1.pdf").exists())
 
 
 def main() -> int:
+    """Extract expenses by function from every BP1 into bp1_functions.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     budgets = _discover_budgets()
     if not budgets:
         print(f"No BP1 PDFs found under {BUDGET_DIR}", file=sys.stderr)
@@ -38,8 +39,10 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"  {budget_year}: FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
             continue
-        print(f"  {budget_year}: {len(df):3d} rows  "
-              f"({df['line_item'].nunique()} functions × {df['fiscal_year'].nunique()} fiscal years)")
+        print(
+            f"  {budget_year}: {len(df):3d} rows  "
+            f"({df['line_item'].nunique()} functions × {df['fiscal_year'].nunique()} fiscal years)"
+        )
         frames.append(df)
 
     if not frames:

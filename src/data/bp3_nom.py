@@ -32,11 +32,10 @@ from __future__ import annotations
 
 import re
 
-import fitz
 import pandas as pd
+import pymupdf
 
 from src.utilities.paths import BUDGET_DIR
-
 
 _CAPTION_RE = re.compile(
     r"Table\s+[A-Z]\.\d+:?\s*Net overseas migration",
@@ -51,6 +50,7 @@ _FY_TOKEN_RE = re.compile(r"^(20\d{2})[-–](\d{2})(?:\s*\([a-z]\))?$")
 _YEAR_TOKEN_RE = re.compile(r"^(20\d{2})(?:\s*\([a-z]\))?$")
 
 _VALUE_RE = re.compile(r"^-?\d{1,3}(?:,\d{3})*(?:\.\d+)?$")
+_MIN_TOC_LINES = 5  # a page with this many dot-leader lines is a table of contents
 
 
 def _normalise_fy(token: str) -> str | None:
@@ -71,19 +71,19 @@ def _normalise_fy(token: str) -> str | None:
     return None
 
 
-def _find_table_page(doc: fitz.Document) -> tuple[int, str] | None:
+def _find_table_page(doc: pymupdf.Document) -> tuple[int, str] | None:
     """Find the BP3 page containing the NOM data table.
 
     Skips TOC pages (lots of dot-leader lines) and only returns a page where
     the caption appears AND the data row label "Net overseas migration,
     Australia" is also present nearby.
     """
-    for i, page in enumerate(doc):
+    for i, page in enumerate(doc.pages()):
         text = page.get_text() or ""
         if not _CAPTION_RE.search(text):
             continue
         toc_lines = sum(1 for ln in text.split("\n") if _TOC_LINE_RE.search(ln))
-        if toc_lines >= 5:
+        if toc_lines >= _MIN_TOC_LINES:
             continue
         if not _LABEL_RE.search(text):
             # Caption present but no data row — might be a section intro page;
@@ -94,8 +94,7 @@ def _find_table_page(doc: fitz.Document) -> tuple[int, str] | None:
 
 
 def _parse_table(text: str) -> list[tuple[str, float]]:
-    """Given the page text, extract (fiscal_year, value) pairs from the
-    NOM table.
+    """Extract (fiscal_year, value) pairs from the NOM table in the page text.
 
     Algorithm:
       1. Locate the caption line.
@@ -145,7 +144,7 @@ def _parse_table(text: str) -> list[tuple[str, float]]:
         else:
             break
 
-    return list(zip(fy_list, values))
+    return list(zip(fy_list, values, strict=False))
 
 
 def load_bp3_nom(budget_year: str) -> pd.DataFrame:
@@ -157,7 +156,7 @@ def load_bp3_nom(budget_year: str) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"No BP3 PDF for {budget_year}: {path}")
 
-    doc = fitz.open(str(path))
+    doc = pymupdf.open(str(path))
     try:
         hit = _find_table_page(doc)
         if hit is None:

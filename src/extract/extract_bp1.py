@@ -20,33 +20,31 @@ from src.utilities.paths import BUDGET_DIR, PARQUET_DIR
 def _discover_budgets() -> list[str]:
     if not BUDGET_DIR.is_dir():
         return []
-    return sorted(
-        d.name for d in BUDGET_DIR.iterdir()
-        if d.is_dir() and (d / "bp1.pdf").exists()
-    )
+    return sorted(d.name for d in BUDGET_DIR.iterdir() if d.is_dir() and (d / "bp1.pdf").exists())
 
 
 def main() -> int:
+    """Extract the forward estimates from every BP1 into bp1_estimates.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     budgets = _discover_budgets()
     if not budgets:
         print(f"No BP1 PDFs found under {BUDGET_DIR}", file=sys.stderr)
         return 1
 
-    print(f"Extracting BP1 estimates for {len(budgets)} budget(s): "
-          f"{', '.join(budgets)}\n")
+    print(f"Extracting BP1 estimates for {len(budgets)} budget(s): {', '.join(budgets)}\n")
 
     frames: list[pd.DataFrame] = []
     for budget_year in budgets:
         try:
             df = load_bp1_estimates(budget_year)
         except Exception as exc:  # noqa: BLE001 - top-level extract, surface every failure
-            print(f"  {budget_year}: FAILED  ({type(exc).__name__}: {exc})",
-                  file=sys.stderr)
+            print(f"  {budget_year}: FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
             continue
         n_fy = df["fiscal_year"].nunique()
         n_li = df["line_item"].nunique()
-        print(f"  {budget_year}: {len(df):4d} rows  "
-              f"({n_li:2d} line items × {n_fy} fiscal years)")
+        print(f"  {budget_year}: {len(df):4d} rows  ({n_li:2d} line items × {n_fy} fiscal years)")
         frames.append(df)
 
     if not frames:

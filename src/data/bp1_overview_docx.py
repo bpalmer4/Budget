@@ -23,6 +23,7 @@ import re
 
 import pandas as pd
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.table import Table as DocxTable
 
 from src.utilities.paths import BUDGET_DIR
@@ -34,6 +35,7 @@ _YEAR_CELL_RE = re.compile(r"^\d{4}[-–—]\d{2}$")
 _INTEGER_RE = re.compile(r"^-?\d+$")
 _FRACTION_RE = re.compile(r"^-?\d+/\d+$")
 _DECIMAL_RE = re.compile(r"^-?\d[\d,]*\.?\d*$")
+_MIN_YEAR_CELLS = 3  # a header row holds at least this many fiscal-year cells
 
 # Canonical line-item names that match `bp1_economic.parquet` so charts can
 # join cleanly across both sources.
@@ -57,27 +59,22 @@ def _normalise_year(text: str) -> str:
     return _label(text).replace("–", "-").replace("—", "-")
 
 
-def _find_overview_table(doc: Document) -> DocxTable:
+def _find_overview_table(doc: DocxDocument) -> DocxTable:
     """Locate Table 1.1 by required row labels."""
     for tbl in doc.tables:
         labels = {_label(row.cells[0].text) for row in tbl.rows}
         if all(req in labels for req in _REQUIRED_LABELS):
             return tbl
-    raise ValueError(
-        f"Could not locate Table 1.1 (need row labels {_REQUIRED_LABELS!r})."
-    )
+    raise ValueError(f"Could not locate Table 1.1 (need row labels {_REQUIRED_LABELS!r}).")
 
 
 def _parse_cell_value(text: str) -> float | None:
-    """Parse a Treasury value cell. Handles fractions ('1 3/4', '1/4'),
-    decimals ('1.3'), comma-grouped numbers, and unicode minus signs.
-    Returns None for empty / non-numeric cells."""
-    s = (
-        _label(text)
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    """Parse a Treasury value cell.
+
+    Handles fractions ('1 3/4', '1/4'), decimals ('1.3'), comma-grouped numbers, and unicode minus signs.
+    Returns None for empty / non-numeric cells.
+    """
+    s = _label(text).replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in {"-", "..", "na", "n.a."}:
         return None
     tokens = s.split()
@@ -125,10 +122,9 @@ def _identify_year_row(tbl: DocxTable) -> int:
     """
     for r in range(min(4, len(tbl.rows))):
         year_cells = sum(
-            1 for c in range(1, len(tbl.columns))
-            if _YEAR_CELL_RE.match(_normalise_year(tbl.rows[r].cells[c].text))
+            1 for c in range(1, len(tbl.columns)) if _YEAR_CELL_RE.match(_normalise_year(tbl.rows[r].cells[c].text))
         )
-        if year_cells >= 3:
+        if year_cells >= _MIN_YEAR_CELLS:
             return r
     raise ValueError("Could not identify the fiscal-year header row in Table 1.1.")
 
@@ -164,12 +160,14 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
             val = _parse_cell_value(tbl.rows[r].cells[c].text)
             if val is None:
                 continue
-            rows.append({
-                "budget_year": budget_year,
-                "fiscal_year": fy,
-                "line_item": line_item,
-                "measure": measure,
-                "value": val,
-            })
+            rows.append(
+                {
+                    "budget_year": budget_year,
+                    "fiscal_year": fy,
+                    "line_item": line_item,
+                    "measure": measure,
+                    "value": val,
+                }
+            )
 
     return pd.DataFrame(rows)

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import pandas as pd
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.table import Table as DocxTable
 
 from src.data.fbo_docx import (
@@ -35,14 +36,12 @@ LINE_ITEM = "Headline cash balance"
 _ROW_LABEL = "Equals headline cash balance"
 
 
-def _find_cash_flow_table(doc: Document) -> DocxTable:
+def _find_cash_flow_table(doc: DocxDocument) -> DocxTable:
     """Locate the cash flow statement by its distinctive closing row."""
     for tbl in doc.tables:
         if any(_label(row.cells[0].text).startswith(_ROW_LABEL) for row in tbl.rows):
             return tbl
-    raise ValueError(
-        f"Could not locate cash flow statement (no row starting {_ROW_LABEL!r})."
-    )
+    raise ValueError(f"Could not locate cash flow statement (no row starting {_ROW_LABEL!r}).")
 
 
 def load_fbo_hcb(year: str) -> pd.DataFrame:
@@ -66,10 +65,14 @@ def load_fbo_hcb(year: str) -> pd.DataFrame:
         value = _parse_value(row.cells[outcome_col].text)
         if value is None:
             continue
-        return pd.DataFrame([{
-            "fiscal_year": year,
-            "line_item": LINE_ITEM,
-            "measure": "$b",
-            "value": value / divisor,
-        }])
+        return pd.DataFrame(
+            [
+                {
+                    "fiscal_year": year,
+                    "line_item": LINE_ITEM,
+                    "measure": "$b",
+                    "value": value / divisor,
+                }
+            ]
+        )
     return pd.DataFrame()

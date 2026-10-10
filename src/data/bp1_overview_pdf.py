@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import re
 
-import fitz
 import pandas as pd
 import pdfplumber
+import pymupdf
 
 from src.utilities.paths import BUDGET_DIR
 
@@ -38,6 +38,8 @@ _FOOTNOTE_START_RE = re.compile(r"^\(?[a-z]\)\s")
 # Outline matchers for the Statement 1 → Statement 2 boundary.
 _S1_RE = re.compile(r"statement\s+1:|bp1_bst1(?!\d)|BP1_BS1(?!\d)", re.IGNORECASE)
 _S2_RE = re.compile(r"statement\s+2:|bp1_bst2(?!\d)|BP1_BS2(?!\d)", re.IGNORECASE)
+_MIN_OUTLINE_PAGES = 3  # a shorter outline range for Statement 1 is degenerate: scan wider
+_MIN_YEARS = 3  # a year-header line lists at least this many fiscal years
 
 # Same canonical names as the DOCX parser so the two paths produce identical
 # output for chart-side joins against bp1_economic.parquet.
@@ -74,8 +76,10 @@ def _is_value_token(t: str) -> bool:
 
 
 def _parse_value_tokens(tokens: list[str]) -> list[float]:
-    """Convert tokens like ['2', '3', '1/4', '4', '3', '3'] to
-    [2.0, 3.25, 4.0, 3.0, 3.0]. Mirrors `bp1_economic.py._parse_value_tokens`."""
+    """Convert tokens like ['2', '3', '1/4', '4', '3', '3'] to [2.0, 3.25, 4.0, 3.0, 3.0].
+
+    Mirrors `bp1_economic.py._parse_value_tokens`.
+    """
     values: list[float] = []
     i = 0
     while i < len(tokens):
@@ -130,7 +134,7 @@ def _determine_measure(line_item: str) -> str:
 
 def _find_statement_1_range(pdf_path: str) -> tuple[int | None, int | None]:
     """Return (start_page, end_page_exclusive) for Statement 1 via PDF outline."""
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     try:
         toc = doc.get_toc()
     finally:
@@ -161,13 +165,13 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
         # (some BP1s — notably 2017-18 — have every L2 entry pointing at the
         # same page, so the Statement 1 → Statement 2 range collapses to zero).
         # Statement 1 always lives in the first ~30 pages.
-        if start is None or (end is not None and end - start < 3):
+        if start is None or (end is not None and end - start < _MIN_OUTLINE_PAGES):
             scan_start, scan_end = 0, min(len(pdf.pages), 40)
         else:
             scan_start = start - 1
             scan_end = (end - 1) if end else min(len(pdf.pages), start + 30)
 
-        for page in pdf.pages[scan_start: scan_end]:
+        for page in pdf.pages[scan_start:scan_end]:
             text = page.extract_text() or ""
             if _CAPTION_RE.search(text) and "Real GDP" in text:
                 target_text = text
@@ -178,7 +182,7 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
 
     lines = target_text.split("\n")
     caption_idx = next(
-        (i for i, l in enumerate(lines) if _CAPTION_RE.search(l)),
+        (i for i, ln in enumerate(lines) if _CAPTION_RE.search(ln)),
         None,
     )
     if caption_idx is None:
@@ -189,7 +193,7 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
     fiscal_years: list[str] = []
     for i in range(caption_idx + 1, min(caption_idx + 6, len(lines))):
         ylist = _parse_year_list(lines[i])
-        if len(ylist) >= 3:
+        if len(ylist) >= _MIN_YEARS:
             year_list_idx = i
             fiscal_years = ylist
             break
@@ -197,7 +201,7 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     rows: list[dict] = []
-    for line in lines[year_list_idx + 1:]:
+    for line in lines[year_list_idx + 1 :]:
         s = line.strip()
         if not s:
             continue
@@ -205,7 +209,7 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
             break
 
         label, value_tokens = _split_label_and_values(s)
-        if label is None:
+        if label is None or value_tokens is None:
             continue
         if label.lower() not in _KNOWN_LABELS:
             continue
@@ -217,13 +221,15 @@ def load_bp1_overview(budget_year: str) -> pd.DataFrame:
         line_item = _LINE_ITEM_ALIASES[label.lower()]
         measure = _determine_measure(line_item)
 
-        for fy, val in zip(fiscal_years, values):
-            rows.append({
-                "budget_year": budget_year,
-                "fiscal_year": fy,
-                "line_item": line_item,
-                "measure": measure,
-                "value": val,
-            })
+        for fy, val in zip(fiscal_years, values, strict=False):
+            rows.append(
+                {
+                    "budget_year": budget_year,
+                    "fiscal_year": fy,
+                    "line_item": line_item,
+                    "measure": measure,
+                    "value": val,
+                }
+            )
 
     return pd.DataFrame(rows)

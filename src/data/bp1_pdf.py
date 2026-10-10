@@ -50,6 +50,8 @@ _YEAR_RE = re.compile(r"^\d{4}[-–—]\d{2}$")
 
 def _normalize_year(token: str) -> str:
     return token.replace("–", "-").replace("—", "-")
+
+
 _UNIT_ROW_RE = re.compile(r"^\$b(?:\s+\$b)+\s*$")
 _NUMBER_RE = re.compile(r"^-?\d[\d,]*\.?\d*$")
 _FOOTNOTE_LINE_RE = re.compile(r"^\([a-z]")
@@ -67,13 +69,7 @@ _NA_TOKENS = {"-", "..", "na", "n.a.", "n/a", "NA"}
 
 
 def _parse_number(token: str) -> float | None:
-    s = (
-        token.replace(",", "")
-        .replace("\xa0", "")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    s = token.replace(",", "").replace("\xa0", "").replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in _NA_TOKENS:
         return None
     if s.startswith("(") and s.endswith(")"):
@@ -87,16 +83,18 @@ def _parse_number(token: str) -> float | None:
 
 
 def _is_value_cell(token: str) -> bool:
-    """True if `token` looks like a value cell (a number or an 'na' placeholder),
-    as opposed to a label word. Used to decide where the trailing numeric run
-    ends and the row label begins.
+    """Return True if `token` looks like a value cell (a number or an 'na' placeholder).
+
+    As opposed to a label word. Used to decide where the trailing numeric run ends and the row label begins.
     """
     return token in _NA_TOKENS or _parse_number(token) is not None
 
 
 def _clean_line_item(label: str) -> str:
-    """Strip the '($b)' unit suffix (older format), '(a)' footnote markers, and
-    re-join split-capital words like 'G ross' → 'Gross'."""
+    """Strip unit suffixes and footnote markers, and re-join split-capital words.
+
+    Removes the '($b)' unit suffix (older format) and '(a)' footnote markers, and turns 'G ross' into 'Gross'.
+    """
     s = label.strip().replace("\xa0", " ")
     # Apply the strip operations in a small loop because the unit and footnote
     # suffixes can appear in either order (e.g. ' ($b)(a)' or '(a) ($b)').
@@ -111,8 +109,10 @@ def _clean_line_item(label: str) -> str:
 
 
 def _parse_year_list(line: str) -> list[str]:
-    """Return the leading run of YYYY-YY tokens. Stops at the first non-match
-    (e.g. ``Total(a)``) so medium-term columns after Total aren't captured."""
+    """Return the leading run of YYYY-YY tokens.
+
+    Stops at the first non-match (e.g. ``Total(a)``) so medium-term columns after Total aren't captured.
+    """
     years: list[str] = []
     for token in line.split():
         if _YEAR_RE.match(token):
@@ -156,14 +156,12 @@ _MIN_VALUE_TOKENS_FOR_DATA = 3
 # Year list must appear within this many lines below the caption; otherwise
 # the caption is likely prose, not a real table heading.
 _YEAR_LIST_SEARCH_WINDOW = 6
+_MIN_YEARS = 4  # a year-header line lists at least this many fiscal years
 
 
 def _find_caption_pages(pdf: pdfplumber.PDF) -> list[int]:
     """Return every page whose text contains an aggregates-table caption."""
-    return [
-        i for i, page in enumerate(pdf.pages)
-        if _CAPTION_RE.search(page.extract_text() or "")
-    ]
+    return [i for i, page in enumerate(pdf.pages) if _CAPTION_RE.search(page.extract_text() or "")]
 
 
 def _parse_aggregates_page(page_text: str, budget_year: str) -> list[dict]:
@@ -183,10 +181,9 @@ def _parse_aggregates_page(page_text: str, budget_year: str) -> list[dict]:
     # don't latch onto narrative prose pages that just *mention* the caption.
     year_list_idx: int | None = None
     fiscal_years: list[str] = []
-    for i in range(caption_idx + 1,
-                   min(caption_idx + 1 + _YEAR_LIST_SEARCH_WINDOW, len(lines))):
+    for i in range(caption_idx + 1, min(caption_idx + 1 + _YEAR_LIST_SEARCH_WINDOW, len(lines))):
         years = _parse_year_list(lines[i])
-        if len(years) >= 4:
+        if len(years) >= _MIN_YEARS:
             year_list_idx = i
             fiscal_years = years
             break
@@ -252,16 +249,18 @@ def _parse_aggregates_page(page_text: str, budget_year: str) -> list[dict]:
             measure = MEASURE_DOLLARS
 
         selected = values[:n_fiscal]
-        for fy, val in zip(fiscal_years, selected):
+        for fy, val in zip(fiscal_years, selected, strict=False):
             if val is None:
                 continue
-            rows.append({
-                "budget_year": budget_year,
-                "fiscal_year": fy,
-                "line_item": line_item,
-                "measure": measure,
-                "value": val,
-            })
+            rows.append(
+                {
+                    "budget_year": budget_year,
+                    "fiscal_year": fy,
+                    "line_item": line_item,
+                    "measure": measure,
+                    "value": val,
+                }
+            )
     return rows
 
 
@@ -291,6 +290,6 @@ def load_bp1_estimates(budget_year: str) -> pd.DataFrame:
     df = pd.DataFrame(all_rows)
     if df.empty:
         return df
-    return df.drop_duplicates(
-        subset=["budget_year", "fiscal_year", "line_item", "measure"], keep="first"
-    ).reset_index(drop=True)
+    return df.drop_duplicates(subset=["budget_year", "fiscal_year", "line_item", "measure"], keep="first").reset_index(
+        drop=True
+    )

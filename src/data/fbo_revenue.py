@@ -128,7 +128,7 @@ def _pdf_page_rows(text: str, fiscal_year: str) -> tuple[list[dict], bool]:
     outcome_col = n_cells - 2  # ... | Outcome | Change on ...
 
     rows: list[dict] = []
-    for line in lines[unit_idx + 1:]:
+    for line in lines[unit_idx + 1 :]:
         label, cells = split_text_row(line)
         if len(cells) != n_cells or len(cells) < _MIN_CELLS or not label:
             continue

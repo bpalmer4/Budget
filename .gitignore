@@ -20,8 +20,8 @@ __pycache__/
 .readabs_cache/
 
 # Derived / regenerable
-output/
-charts/
+/output/
+/charts/
 
 # Source documents (Treasury PDFs/DOCX — re-downloadable, not committed)
 data/Budget/

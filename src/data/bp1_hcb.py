@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import re
 
-import fitz  # PyMuPDF — fast page-text pre-scan
 import pandas as pd
 import pdfplumber
+import pymupdf  # fast page-text pre-scan
 
 from src.utilities.paths import BUDGET_DIR
 
@@ -41,6 +41,7 @@ _HCB_ROW_RE = re.compile(
     re.IGNORECASE,
 )
 _MIN_VALUES = 4  # need at least 4 numbers to count as a forecast row
+_MIN_YEARS = 4  # a year-header line lists at least this many fiscal years
 
 
 def _normalize_year(t: str) -> str:
@@ -52,13 +53,7 @@ def _parse_year_list(line: str) -> list[str]:
 
 
 def _parse_number(token: str) -> float | None:
-    s = (
-        token.replace(",", "")
-        .replace("\xa0", "")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    s = token.replace(",", "").replace("\xa0", "").replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in _NA_TOKENS:
         return None
     if s.startswith("(") and s.endswith(")"):
@@ -84,12 +79,9 @@ def load_bp1_hcb(budget_year: str) -> pd.DataFrame:
 
     # Fast pre-scan with PyMuPDF to find candidate pages, then re-extract just
     # those with pdfplumber (whose text layout the row parser is written for).
-    doc = fitz.open(str(path))
+    doc = pymupdf.open(str(path))
     try:
-        candidates = [
-            i for i, page in enumerate(doc)
-            if "Equals headline cash balance" in page.get_text()
-        ]
+        candidates = [i for i, page in enumerate(doc.pages()) if "Equals headline cash balance" in page.get_text()]
     finally:
         doc.close()
 
@@ -109,7 +101,7 @@ def load_bp1_hcb(budget_year: str) -> pd.DataFrame:
                 s = line.strip()
 
                 ylist = _parse_year_list(s)
-                if len(ylist) >= 4:
+                if len(ylist) >= _MIN_YEARS:
                     pending_years = ylist
 
                 if _UNIT_ROW_RE.match(s):
@@ -127,20 +119,22 @@ def load_bp1_hcb(budget_year: str) -> pd.DataFrame:
                 if len([n for n in numbers if n is not None]) < _MIN_VALUES:
                     continue
 
-                for fy, val in zip(fiscal_years, numbers[: len(fiscal_years)]):
+                for fy, val in zip(fiscal_years, numbers[: len(fiscal_years)], strict=False):
                     if val is None:
                         continue
-                    rows.append({
-                        "budget_year": budget_year,
-                        "fiscal_year": fy,
-                        "line_item": LINE_ITEM,
-                        "measure": "$b",
-                        "value": val if unit == "$b" else val / 1000.0,
-                    })
+                    rows.append(
+                        {
+                            "budget_year": budget_year,
+                            "fiscal_year": fy,
+                            "line_item": LINE_ITEM,
+                            "measure": "$b",
+                            "value": val if unit == "$b" else val / 1000.0,
+                        }
+                    )
 
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    return df.drop_duplicates(
-        subset=["budget_year", "fiscal_year", "line_item", "measure"], keep="first"
-    ).reset_index(drop=True)
+    return df.drop_duplicates(subset=["budget_year", "fiscal_year", "line_item", "measure"], keep="first").reset_index(
+        drop=True
+    )

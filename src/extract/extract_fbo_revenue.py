@@ -74,8 +74,7 @@ def main() -> int:
 
     frames: list[pd.DataFrame] = []
     for year, source in targets:
-        loader = (fbo_revenue.load_fbo_revenue_docx if source == "docx"
-                  else fbo_revenue.load_fbo_revenue_pdf)
+        loader = fbo_revenue.load_fbo_revenue_docx if source == "docx" else fbo_revenue.load_fbo_revenue_pdf
         try:
             df = loader(year)
         except Exception as exc:  # noqa: BLE001 - report and keep going

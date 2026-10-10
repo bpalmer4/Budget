@@ -39,6 +39,10 @@ def _discover_budgets() -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    """Extract Table 1.1 from every BP1 (DOCX where available, else PDF) into bp1_overview.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     targets = _discover_budgets()
     if not targets:
         print(f"No BP1 sources under {BUDGET_DIR}", file=sys.stderr)
@@ -46,25 +50,19 @@ def main() -> int:
 
     n_docx = sum(1 for _, s in targets if s == "docx")
     n_pdf = sum(1 for _, s in targets if s == "pdf")
-    print(f"Extracting BP1 overview (Table 1.1) for {len(targets)} budget(s): "
-          f"{n_docx} DOCX, {n_pdf} PDF\n")
+    print(f"Extracting BP1 overview (Table 1.1) for {len(targets)} budget(s): {n_docx} DOCX, {n_pdf} PDF\n")
 
     frames: list[pd.DataFrame] = []
     for budget_year, source in targets:
-        loader = (
-            bp1_overview_docx.load_bp1_overview if source == "docx"
-            else bp1_overview_pdf.load_bp1_overview
-        )
+        loader = bp1_overview_docx.load_bp1_overview if source == "docx" else bp1_overview_pdf.load_bp1_overview
         try:
             df = loader(budget_year)
         except Exception as exc:  # noqa: BLE001 - top-level extract: surface every failure
-            print(f"  {budget_year} ({source}): FAILED  ({type(exc).__name__}: {exc})",
-                  file=sys.stderr)
+            print(f"  {budget_year} ({source}): FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
             continue
         n_items = df["line_item"].nunique() if not df.empty else 0
         n_years = df["fiscal_year"].nunique() if not df.empty else 0
-        print(f"  {budget_year} ({source}): {len(df):3d} rows  "
-              f"({n_items} line items × {n_years} fiscal years)")
+        print(f"  {budget_year} ({source}): {len(df):3d} rows  ({n_items} line items × {n_years} fiscal years)")
         frames.append(df)
 
     if not frames:

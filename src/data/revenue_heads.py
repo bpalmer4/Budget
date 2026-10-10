@@ -33,19 +33,21 @@ _RENAMES: dict[str, str] = {
 }
 
 # Rows that sum other rows. Excluded when checking that the heads add up.
-SUBTOTALS: frozenset[str] = frozenset({
-    "Total individuals and other withholding tax",
-    "Income taxation revenue",
-    "Total sales taxes",
-    "Total excise duty revenue",
-    "Total customs duty revenue",
-    "Total excise and customs duty",
-    "Total other indirect taxation revenue",
-    "Indirect taxation revenue",
-    "Taxation revenue",
-    "Non-taxation revenue",
-    TOTAL_REVENUE,
-})
+SUBTOTALS: frozenset[str] = frozenset(
+    {
+        "Total individuals and other withholding tax",
+        "Income taxation revenue",
+        "Total sales taxes",
+        "Total excise duty revenue",
+        "Total customs duty revenue",
+        "Total excise and customs duty",
+        "Total other indirect taxation revenue",
+        "Indirect taxation revenue",
+        "Taxation revenue",
+        "Non-taxation revenue",
+        TOTAL_REVENUE,
+    }
+)
 # Published as positive numbers but subtracted in the table's arithmetic.
 DEDUCTIONS: frozenset[str] = frozenset({"Income tax refunds", "Customs refunds and drawbacks"})
 # "Of which" rows are part of the row above, not additional to it.
@@ -72,14 +74,7 @@ def canonical_head(raw: str) -> str:
 
 def parse_number(token: str) -> float | None:
     """Parse one numeric cell ('1,234', '-56', '(78)'); None for n/a or non-numeric."""
-    s = (
-        token.strip()
-        .replace(",", "")
-        .replace("\xa0", "")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    s = token.strip().replace(",", "").replace("\xa0", "").replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in _NA_TOKENS:
         return None
     if s.startswith("(") and s.endswith(")"):

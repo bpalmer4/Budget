@@ -28,6 +28,7 @@ import re
 import pandas as pd
 import pdfplumber
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.table import Table as DocxTable
 
 from src.utilities.paths import OUTCOME_DIR
@@ -53,8 +54,9 @@ _FUNCTIONS_LOWER = {f.lower(): f for f in KNOWN_FUNCTIONS}
 
 
 def _canonical_function(label: str) -> str | None:
-    """If `label` represents a function total (function name itself, or
-    "Total {function name}"), return the canonical function name. Else None.
+    """Return the canonical function name if `label` is a function total, else None.
+
+    A function total is the function name itself, or "Total {function name}".
 
     Handles labels with embedded newlines / collapsed whitespace, and labels
     where the trailing word is truncated (e.g. "Total housing and community"
@@ -69,10 +71,7 @@ def _canonical_function(label: str) -> str | None:
         if rest in _FUNCTIONS_LOWER:
             return _FUNCTIONS_LOWER[rest]
         # Unique-prefix fallback for truncated cell text
-        prefix_matches = [
-            fn for fn_lower, fn in _FUNCTIONS_LOWER.items()
-            if fn_lower.startswith(rest)
-        ]
+        prefix_matches = [fn for fn_lower, fn in _FUNCTIONS_LOWER.items() if fn_lower.startswith(rest)]
         if len(prefix_matches) == 1:
             return prefix_matches[0]
     return None
@@ -84,17 +83,11 @@ def _canonical_function(label: str) -> str | None:
 
 _NUMBER_RE = re.compile(r"^-?\d[\d,]*\.?\d*$")
 _NA_TOKENS = {"-", "..", "na", "n.a.", "NA"}
+_MIN_FUNCTION_HITS = 3  # a table with this many function rows is part of the function table
 
 
 def _parse_number(text: str) -> float | None:
-    s = (
-        text.strip()
-        .replace(",", "")
-        .replace("\xa0", "")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    s = text.strip().replace(",", "").replace("\xa0", "").replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in _NA_TOKENS:
         return None
     if s.startswith("(") and s.endswith(")"):
@@ -107,7 +100,7 @@ def _parse_number(text: str) -> float | None:
     return None
 
 
-def _docx_find_function_tables(doc: Document) -> list[DocxTable]:
+def _docx_find_function_tables(doc: DocxDocument) -> list[DocxTable]:
     """Return all tables in the doc that look like part of the function table.
 
     Treasury's appendix-A is often split across multiple Word tables when the
@@ -117,8 +110,8 @@ def _docx_find_function_tables(doc: Document) -> list[DocxTable]:
     matching: list[tuple[DocxTable, int]] = []
     for tbl in doc.tables:
         labels = [row.cells[0].text.strip().replace("\xa0", " ") for row in tbl.rows]
-        hits = sum(1 for l in labels if _canonical_function(l) is not None)
-        if hits >= 3:
+        hits = sum(1 for label in labels if _canonical_function(label) is not None)
+        if hits >= _MIN_FUNCTION_HITS:
             matching.append((tbl, hits))
     if not matching:
         raise ValueError("No function-table-shaped tables found.")
@@ -149,10 +142,7 @@ def _docx_count_header_rows(tbl: DocxTable, max_header: int = 6) -> int:
 
 
 def _identify_outcome_column(headers: list[str], fiscal_year: str) -> int:
-    candidates = [
-        i for i, h in enumerate(headers)
-        if "Outcome" in h and "Change" not in h and "Estimate" not in h
-    ]
+    candidates = [i for i, h in enumerate(headers) if "Outcome" in h and "Change" not in h and "Estimate" not in h]
     matching = [i for i in candidates if fiscal_year in headers[i]]
     if len(matching) == 1:
         return matching[0]
@@ -193,27 +183,33 @@ def load_fbo_function_docx(fiscal_year: str) -> pd.DataFrame:
         for row in tbl.rows[n_header:]:
             label = row.cells[0].text.strip().replace("\xa0", " ")
             canonical = _canonical_function(label)
-            value = (_parse_number(row.cells[outcome_col].text)
-                     if outcome_col < len(row.cells) else None)
+            value = _parse_number(row.cells[outcome_col].text) if outcome_col < len(row.cells) else None
             is_total_label = label.lower().startswith("total ")
 
             if canonical is not None and value is not None:
                 # Function total in a single row.
-                rows.append({
-                    "fiscal_year": fiscal_year, "line_item": canonical,
-                    "measure": "$b", "value": value / 1000.0,
-                })
+                rows.append(
+                    {
+                        "fiscal_year": fiscal_year,
+                        "line_item": canonical,
+                        "measure": "$b",
+                        "value": value / 1000.0,
+                    }
+                )
                 pending_total_function = None
             elif canonical is not None and value is None and is_total_label:
                 # "Total X" label without values — values must be on the next row.
                 pending_total_function = canonical
-            elif (pending_total_function is not None and value is not None
-                  and canonical is None):
+            elif pending_total_function is not None and value is not None and canonical is None:
                 # Continuation row: attribute its value to the pending total.
-                rows.append({
-                    "fiscal_year": fiscal_year, "line_item": pending_total_function,
-                    "measure": "$b", "value": value / 1000.0,
-                })
+                rows.append(
+                    {
+                        "fiscal_year": fiscal_year,
+                        "line_item": pending_total_function,
+                        "measure": "$b",
+                        "value": value / 1000.0,
+                    }
+                )
                 pending_total_function = None
             else:
                 pending_total_function = None  # any other row resets
@@ -223,9 +219,7 @@ def load_fbo_function_docx(fiscal_year: str) -> pd.DataFrame:
     # Prefer the LAST occurrence — for functions with sub-functions, the empty
     # header row gets skipped (value is None) and only the "Total X" row emits.
     # For functions without sub-functions (Defence), only one row exists.
-    return df.drop_duplicates(
-        subset=["fiscal_year", "line_item", "measure"], keep="last"
-    ).reset_index(drop=True)
+    return df.drop_duplicates(subset=["fiscal_year", "line_item", "measure"], keep="last").reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -266,19 +260,15 @@ def _normalize_year_token(t: str) -> str:
 
 
 def _pdf_parse_year_list(line: str) -> list[str]:
-    out: list[str] = []
-    for tok in line.split():
-        if _YEAR_RE.match(tok):
-            out.append(_normalize_year_token(tok))
-    return out
+    return [_normalize_year_token(tok) for tok in line.split() if _YEAR_RE.match(tok)]
 
 
 def load_fbo_function_pdf(fiscal_year: str) -> pd.DataFrame:
-    """Extract function-level expenses outcomes from FBO PDF (Appendix A).
+    r"""Extract function-level expenses outcomes from FBO PDF (Appendix A).
 
     The Treasury caption spans two lines ("...expenses by\nfunction and
     sub-function") so a single-line regex match fails. We anchor on the
-    PAGE-level caption match (which sees newlines via re's default `\\s+`),
+    PAGE-level caption match (which sees newlines via re's default `\s+`),
     then locate the data area via the `$m $m $m ...` unit row.
     """
     path = OUTCOME_DIR / fiscal_year / "fbo.pdf"
@@ -309,7 +299,7 @@ def load_fbo_function_pdf(fiscal_year: str) -> pd.DataFrame:
 
     full_cols = lines[bb_idx].split().count("$m")
     # Header text is whatever sits in the few lines above the $m row.
-    header_text = " ".join(lines[max(0, bb_idx - 8): bb_idx])
+    header_text = " ".join(lines[max(0, bb_idx - 8) : bb_idx])
     # Outcome column: N-2 when a Change column is present (newer FBOs), else N-1.
     outcome_col = full_cols - 2 if "Change" in header_text else full_cols - 1
 
@@ -318,7 +308,7 @@ def load_fbo_function_pdf(fiscal_year: str) -> pd.DataFrame:
     # on one PDF line with the values wrapped onto the next line (e.g.
     # 'Total housing and community\namenities 6,572 ...').
     pending_total_function: str | None = None
-    for line in lines[bb_idx + 1:]:
+    for line in lines[bb_idx + 1 :]:
         s = line.strip()
         if not s:
             continue
@@ -335,10 +325,7 @@ def load_fbo_function_pdf(fiscal_year: str) -> pd.DataFrame:
         if not numbers:
             # Label-only line: might be a "Total X" with values on next line
             canonical = _canonical_function(s)
-            if canonical is not None and s.lower().startswith("total "):
-                pending_total_function = canonical
-            else:
-                pending_total_function = None
+            pending_total_function = canonical if canonical is not None and s.lower().startswith("total ") else None
             continue
 
         label = " ".join(tokens[: i + 1])
@@ -346,23 +333,29 @@ def load_fbo_function_pdf(fiscal_year: str) -> pd.DataFrame:
         value = numbers[outcome_col] if 0 <= outcome_col < len(numbers) else None
 
         if canonical is not None and value is not None:
-            rows.append({
-                "fiscal_year": fiscal_year, "line_item": canonical,
-                "measure": "$b", "value": value / 1000.0,
-            })
+            rows.append(
+                {
+                    "fiscal_year": fiscal_year,
+                    "line_item": canonical,
+                    "measure": "$b",
+                    "value": value / 1000.0,
+                }
+            )
             pending_total_function = None
         elif pending_total_function is not None and value is not None and canonical is None:
             # Continuation of previous "Total X" label.
-            rows.append({
-                "fiscal_year": fiscal_year, "line_item": pending_total_function,
-                "measure": "$b", "value": value / 1000.0,
-            })
+            rows.append(
+                {
+                    "fiscal_year": fiscal_year,
+                    "line_item": pending_total_function,
+                    "measure": "$b",
+                    "value": value / 1000.0,
+                }
+            )
             pending_total_function = None
         else:
             pending_total_function = None
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    return df.drop_duplicates(
-        subset=["fiscal_year", "line_item", "measure"], keep="last"
-    ).reset_index(drop=True)
+    return df.drop_duplicates(subset=["fiscal_year", "line_item", "measure"], keep="last").reset_index(drop=True)

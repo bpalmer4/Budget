@@ -39,6 +39,10 @@ def _discover_years() -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    """Extract the aggregate outcomes from every FBO into fbo_outcomes.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     targets = _discover_years()
     if not targets:
         print(f"No FBO files found under {OUTCOME_DIR}", file=sys.stderr)
@@ -46,8 +50,7 @@ def main() -> int:
 
     n_docx = sum(1 for _, s in targets if s == "docx")
     n_pdf = sum(1 for _, s in targets if s == "pdf")
-    print(f"Extracting FBO Outcome for {len(targets)} year(s): "
-          f"{n_docx} DOCX, {n_pdf} PDF\n")
+    print(f"Extracting FBO Outcome for {len(targets)} year(s): {n_docx} DOCX, {n_pdf} PDF\n")
 
     frames: list[pd.DataFrame] = []
     for year, source in targets:
@@ -55,11 +58,9 @@ def main() -> int:
         try:
             df = loader(year)
         except Exception as exc:  # noqa: BLE001 - top-level extract: surface every failure
-            print(f"  {year} ({source}): FAILED  ({type(exc).__name__}: {exc})",
-                  file=sys.stderr)
+            print(f"  {year} ({source}): FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
             continue
-        print(f"  {year} ({source}): {len(df):3d} rows  "
-              f"({df['line_item'].nunique()} unique line items)")
+        print(f"  {year} ({source}): {len(df):3d} rows  ({df['line_item'].nunique()} unique line items)")
         frames.append(df)
 
     if not frames:

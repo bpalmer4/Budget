@@ -61,9 +61,14 @@ lint.ignore = [
     "RUF022",  # __all__ not sorted - prefer categorical grouping for readability
     "TC001",   # move application import into TYPE_CHECKING block - too aggressive
     "TC002",   # move third-party import into TYPE_CHECKING block - too aggressive
+    "TC003",   # move standard library import into TYPE_CHECKING block - too aggressive
     "D100",    # Missing docstring in public module
     "PLR0913", # Too many arguments
+    "CPY001",  # missing copyright notice
 ]
+
+[tool.mypy]
+explicit_package_bases = true  # module names start at the project root, matching the "src." imports
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

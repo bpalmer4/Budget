@@ -22,13 +22,14 @@ from src.utilities.paths import OUTCOME_DIR, PARQUET_DIR
 def _discover_years() -> list[str]:
     if not OUTCOME_DIR.is_dir():
         return []
-    return sorted(
-        d.name for d in OUTCOME_DIR.iterdir()
-        if d.is_dir() and (d / "fbo_02_part_2.docx").exists()
-    )
+    return sorted(d.name for d in OUTCOME_DIR.iterdir() if d.is_dir() and (d / "fbo_02_part_2.docx").exists())
 
 
 def main() -> int:
+    """Extract Headline cash balance outcomes from every FBO Part 2 DOCX into fbo_hcb.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     years = _discover_years()
     if not years:
         print(f"No FBO Part 2 DOCX under {OUTCOME_DIR}", file=sys.stderr)
@@ -40,8 +41,7 @@ def main() -> int:
         try:
             df = load_fbo_hcb(year)
         except Exception as exc:  # noqa: BLE001
-            print(f"  {year}: FAILED  ({type(exc).__name__}: {exc})",
-                  file=sys.stderr)
+            print(f"  {year}: FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
             continue
         value = f"{df['value'].iloc[0]:.1f}" if not df.empty else "(missing)"
         print(f"  {year}: {value}")

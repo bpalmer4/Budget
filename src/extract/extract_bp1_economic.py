@@ -17,13 +17,14 @@ from src.utilities.paths import BUDGET_DIR, PARQUET_DIR
 def _discover_budgets() -> list[str]:
     if not BUDGET_DIR.is_dir():
         return []
-    return sorted(
-        d.name for d in BUDGET_DIR.iterdir()
-        if d.is_dir() and (d / "bp1.pdf").exists()
-    )
+    return sorted(d.name for d in BUDGET_DIR.iterdir() if d.is_dir() and (d / "bp1.pdf").exists())
 
 
 def main() -> int:
+    """Extract Statement 2 economic forecasts from every BP1 into bp1_economic.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     budgets = _discover_budgets()
     if not budgets:
         print(f"No BP1 PDFs under {BUDGET_DIR}", file=sys.stderr)
@@ -35,8 +36,7 @@ def main() -> int:
         try:
             df = load_bp1_economic(budget_year)
         except Exception as exc:  # noqa: BLE001
-            print(f"  {budget_year}: FAILED  ({type(exc).__name__}: {exc})",
-                  file=sys.stderr)
+            print(f"  {budget_year}: FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
             continue
         n_items = df["line_item"].nunique() if not df.empty else 0
         n_years = df["fiscal_year"].nunique() if not df.empty else 0

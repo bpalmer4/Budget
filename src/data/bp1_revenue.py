@@ -62,20 +62,22 @@ def _parse_table(page_text: str, budget_year: str, fiscal_year: str) -> list[dic
         raise ValueError(f"No '$m $m $m %' unit row in {budget_year} table for {fiscal_year}")
 
     rows: list[dict] = []
-    for line in lines[start + 1:]:
+    for line in lines[start + 1 :]:
         label, cells = split_text_row(line)
         if len(cells) != _N_CELLS or not label:
             continue  # header rows (no cells) and anything that isn't a table row
         value = cells[_BUDGET_COL]
         head = canonical_head(label)
         if value is not None:
-            rows.append({
-                "budget_year": budget_year,
-                "fiscal_year": fiscal_year,
-                "line_item": head,
-                "measure": "$b",
-                "value": value / 1000.0,
-            })
+            rows.append(
+                {
+                    "budget_year": budget_year,
+                    "fiscal_year": fiscal_year,
+                    "line_item": head,
+                    "measure": "$b",
+                    "value": value / 1000.0,
+                }
+            )
         if head == TOTAL_REVENUE:
             break
     return rows
@@ -95,6 +97,8 @@ def load_bp1_revenue(budget_year: str) -> pd.DataFrame:
     with pdfplumber.open(str(path)) as pdf:
         for page_idx, fiscal_year in pages:
             rows.extend(_parse_table(pdf.pages[page_idx].extract_text() or "", budget_year, fiscal_year))
-    return pd.DataFrame(rows).drop_duplicates(
-        subset=["budget_year", "fiscal_year", "line_item", "measure"]
-    ).reset_index(drop=True)
+    return (
+        pd.DataFrame(rows)
+        .drop_duplicates(subset=["budget_year", "fiscal_year", "line_item", "measure"])
+        .reset_index(drop=True)
+    )

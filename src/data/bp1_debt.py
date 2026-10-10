@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import re
 
-import fitz  # PyMuPDF — fast outline navigation
 import pandas as pd
 import pdfplumber
+import pymupdf  # fast outline navigation
 
 from src.utilities.paths import BUDGET_DIR
 
@@ -42,16 +42,17 @@ _STATEMENT_DEBT_RE = re.compile(
 # Negative lookahead `(?!\d)` ensures we match BS6 in "BP1_BS6_part1" without
 # matching BS60. \b alone fails because `_` counts as a word char.
 _OLD_BOOKMARK_RE = re.compile(
-    r"bp1_bst([6-9]|10)(?!\d)|BP1_BS([6-9]|10)(?!\d)", re.IGNORECASE,
+    r"bp1_bst([6-9]|10)(?!\d)|BP1_BS([6-9]|10)(?!\d)",
+    re.IGNORECASE,
 )
 
 
 def _find_debt_section_start(pdf_path: str) -> int:
-    """Return the 1-indexed first page of the section likely to contain debt
-    tables, using the PDF's outline. Falls back to 1 (scan whole document)
-    if the outline has no useful entry.
+    """Return the 1-indexed first page of the section likely to contain debt tables.
+
+    Uses the PDF's outline. Falls back to 1 (scan whole document) if the outline has no useful entry.
     """
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     try:
         toc = doc.get_toc()
     finally:
@@ -65,6 +66,7 @@ def _find_debt_section_start(pdf_path: str) -> int:
         if _OLD_BOOKMARK_RE.search(title):
             return max(1, page)
     return 1
+
 
 _YEAR_RE = re.compile(r"^\d{4}[-–—]\d{2}$")
 # Match a `$m $m $m ...` (or $b) unit row, optionally preceded by a label
@@ -92,6 +94,7 @@ _DEBT_LABEL_RE = re.compile(
 # the intent explicit.
 _MIN_GROSS_DEBT_BILLIONS = 50.0
 _MIN_VALUES = 4  # need at least 4 trailing numbers to count as a forecast row
+_MIN_YEARS = 4  # a year-header line lists at least this many fiscal years
 
 
 def _normalize_year(t: str) -> str:
@@ -103,13 +106,7 @@ def _parse_year_list(line: str) -> list[str]:
 
 
 def _parse_number(token: str) -> float | None:
-    s = (
-        token.replace(",", "")
-        .replace("\xa0", "")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    s = token.replace(",", "").replace("\xa0", "").replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in _NA_TOKENS:
         return None
     if s.startswith("(") and s.endswith(")"):
@@ -127,18 +124,6 @@ def _identify_line_item(label_part: str) -> str:
     if "net debt" in label_part.lower():
         return "Net debt"
     return "Gross debt"  # "Face value - end of year"
-
-
-def _find_header_above_with_state(
-    lines: list[str], anchor_idx: int, current_header: tuple[list[str], str] | None,
-) -> tuple[list[str], str] | None:
-    """Return the most recent unit row + year list at or above `anchor_idx`.
-
-    `current_header` is the header found while iterating earlier on the same
-    page; we use it if no closer header exists. Balance-sheet tables in older
-    BP1s span 30-50 lines, so a tight backward search misses the unit row.
-    """
-    return current_header
 
 
 def load_bp1_debt(budget_year: str) -> pd.DataFrame:
@@ -159,7 +144,7 @@ def load_bp1_debt(budget_year: str) -> pd.DataFrame:
 
     rows: list[dict] = []
     with pdfplumber.open(str(path)) as pdf:
-        for page in pdf.pages[start_page - 1:]:
+        for page in pdf.pages[start_page - 1 :]:
             text = page.extract_text() or ""
             if "...." in text[:200]:  # skip TOC pages
                 continue
@@ -168,12 +153,12 @@ def load_bp1_debt(budget_year: str) -> pd.DataFrame:
             # seen on this page; data rows below use that header.
             current_header: tuple[list[str], str] | None = None
             pending_years: list[str] | None = None
-            for j, line in enumerate(lines):
+            for line in lines:
                 s = line.strip()
 
                 # Track potential year-list lines
                 ylist = _parse_year_list(s)
-                if len(ylist) >= 4:
+                if len(ylist) >= _MIN_YEARS:
                     pending_years = ylist
 
                 # Track unit rows; pair with the most recent year list
@@ -192,8 +177,7 @@ def load_bp1_debt(budget_year: str) -> pd.DataFrame:
                 tokens = m.group(2).split()
                 numbers: list[float | None] = []
                 i_t = len(tokens) - 1
-                while i_t >= 0 and (_parse_number(tokens[i_t]) is not None
-                                    or tokens[i_t] in _NA_TOKENS):
+                while i_t >= 0 and (_parse_number(tokens[i_t]) is not None or tokens[i_t] in _NA_TOKENS):
                     numbers.append(_parse_number(tokens[i_t]))
                     i_t -= 1
                 numbers.reverse()
@@ -206,7 +190,7 @@ def load_bp1_debt(budget_year: str) -> pd.DataFrame:
 
                 # Match the first N values to the N fiscal years (extras = footnotes/totals)
                 row_values: list[tuple[str, float]] = []
-                for fy, val in zip(fiscal_years, numbers[: len(fiscal_years)]):
+                for fy, val in zip(fiscal_years, numbers[: len(fiscal_years)], strict=False):
                     if val is None:
                         continue
                     value_b = val if unit == "$b" else val / 1000.0
@@ -216,24 +200,28 @@ def load_bp1_debt(budget_year: str) -> pd.DataFrame:
                 # (its values are an order of magnitude smaller). Only checked
                 # when the source label was "Government securities" — face-value
                 # / Net-debt rows aren't ambiguous in the same way.
-                if (line_item == "Gross debt"
-                        and "Government securities" in m.group(1).strip()
-                        and row_values
-                        and max(v for _, v in row_values) < _MIN_GROSS_DEBT_BILLIONS):
+                if (
+                    line_item == "Gross debt"
+                    and "Government securities" in m.group(1).strip()
+                    and row_values
+                    and max(v for _, v in row_values) < _MIN_GROSS_DEBT_BILLIONS
+                ):
                     continue
 
                 for fy, value_b in row_values:
-                    rows.append({
-                        "budget_year": budget_year,
-                        "fiscal_year": fy,
-                        "line_item": line_item,
-                        "measure": "$b",
-                        "value": value_b,
-                    })
+                    rows.append(
+                        {
+                            "budget_year": budget_year,
+                            "fiscal_year": fy,
+                            "line_item": line_item,
+                            "measure": "$b",
+                            "value": value_b,
+                        }
+                    )
 
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    return df.drop_duplicates(
-        subset=["budget_year", "fiscal_year", "line_item", "measure"], keep="first"
-    ).reset_index(drop=True)
+    return df.drop_duplicates(subset=["budget_year", "fiscal_year", "line_item", "measure"], keep="first").reset_index(
+        drop=True
+    )

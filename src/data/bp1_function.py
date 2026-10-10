@@ -41,6 +41,7 @@ _FOOTNOTE_LINE_RE = re.compile(r"^\(?[a-z]\)")
 _TOTAL_RE = re.compile(r"^total\s+expenses\b", re.IGNORECASE)
 # Minimum numeric tokens for a line to count as data (vs page footer / prose).
 _MIN_VALUE_TOKENS_FOR_DATA = 3
+_MIN_YEARS = 4  # a year-header line lists at least this many fiscal years
 _NA_TOKENS = {"-", "..", "na", "n.a.", "NA"}
 
 
@@ -147,7 +148,7 @@ def load_bp1_functions(budget_year: str) -> pd.DataFrame:
     fiscal_years: list[str] = []
     for i in range(caption_idx + 1, min(caption_idx + 6, len(lines))):
         years = _parse_year_list(lines[i])
-        if len(years) >= 4:
+        if len(years) >= _MIN_YEARS:
             year_list_idx = i
             fiscal_years = years
             break
@@ -179,14 +180,16 @@ def load_bp1_functions(budget_year: str) -> pd.DataFrame:
         label = label.replace("\xa0", " ").strip()
         if not label:
             continue
-        for fy, val in zip(fiscal_years, values):
+        for fy, val in zip(fiscal_years, values, strict=False):
             if val is None:
                 continue
-            rows.append({
-                "budget_year": budget_year,
-                "fiscal_year": fy,
-                "line_item": label,
-                "measure": "$b",
-                "value": val / 1000.0,  # $m → $b
-            })
+            rows.append(
+                {
+                    "budget_year": budget_year,
+                    "fiscal_year": fy,
+                    "line_item": label,
+                    "measure": "$b",
+                    "value": val / 1000.0,  # $m → $b
+                }
+            )
     return pd.DataFrame(rows)

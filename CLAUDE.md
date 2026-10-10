@@ -17,15 +17,20 @@ All Python lives under `src/`. Library code (parsers, helpers) and entry-point s
 ```
 src/
 ├── data/                         # parsers: DOCX/PDF → DataFrame (library)
-│   ├── bp1.py
-│   ├── fbo_docx.py
-│   └── fbo_pdf.py                # legacy pre-2019-20 FBOs
-├── utilities/                    # shared helpers (paths, year ranges, table filters)
+│   ├── bp1_*.py                  # BP1 parsers, one per table (PDF; overview also DOCX)
+│   ├── bp3_nom.py                # BP3 net overseas migration table
+│   ├── fbo_*.py                  # FBO parsers (DOCX 2019-20 onwards, PDF before)
+│   ├── revenue_heads.py          # shared helpers for the revenue-by-head tables
+│   └── ruff.toml                 # looser complexity limits for the parsers
+├── utilities/                    # shared helpers (paths)
 ├── extract/                      # ETL entry points: source docs → data/parquet/
-│   ├── extract_bp1.py
-│   └── extract_fbo.py
+│   └── extract_*.py              # one per Parquet file
 └── charts/                       # chart entry points: data/parquet/ → charts/
-    └── chart_*.py
+    ├── chart_*.py                # one script per chart set
+    ├── aggregate.py              # shared: fiscal aggregate chart
+    ├── variance.py               # shared: forecast-miss chart
+    ├── economic.py               # shared: economic forecast chart
+    └── abs_history.py            # shared: ABS history for the economic charts
 
 data/
 ├── Budget/{YYYY-YY}/             # BP1 PDF (all 17 budgets, 2010-11 → 2026-27);
@@ -45,8 +50,8 @@ Pure Python — no Jupyter notebooks in this project. `src/` is a PEP 420 namesp
 
 Two-stage pipeline: **extract once, chart many times.**
 
-1. **Extract** (`scripts/extract/*.py`) — parse the source DOCX/PDFs, build tidy DataFrames, write Parquet to `data/parquet/`. Run when source docs change or parsers are updated, not every chart run.
-2. **Chart** (`scripts/charts/*.py`) — `pd.read_parquet(...)`, filter, plot. Zero parsing, zero `python-docx` dependency at chart time.
+1. **Extract** (`src/extract/*.py`) — parse the source DOCX/PDFs, build tidy DataFrames, write Parquet to `data/parquet/`. Run when source docs change or parsers are updated, not every chart run.
+2. **Chart** (`src/charts/*.py`) — `pd.read_parquet(...)`, filter, plot. Zero parsing, zero `python-docx` dependency at chart time.
 
 ```bash
 # Re-extract everything
@@ -54,7 +59,7 @@ uv run python -m src.extract.extract_bp1
 uv run python -m src.extract.extract_fbo
 
 # Produce a chart
-uv run python -m src.charts.chart_aggregate_variance
+uv run python -m src.charts.chart_economic
 ```
 
 **Parquet schema convention** — tidy/long format: `[budget_year, source_doc, statement_no, line_item, fiscal_year, value, unit]`. One row per (budget × line item × fiscal year). Pivot to wide format inside chart scripts when needed.

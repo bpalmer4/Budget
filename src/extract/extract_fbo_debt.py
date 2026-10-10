@@ -32,6 +32,10 @@ def _discover_years() -> list[tuple[str, str]]:
 
 
 def main() -> int:
+    """Extract Net and Gross debt outcomes from every FBO into fbo_debt.parquet.
+
+    Return 1 if nothing could be extracted.
+    """
     targets = _discover_years()
     if not targets:
         print(f"No FBO files under {OUTCOME_DIR}", file=sys.stderr)
@@ -49,13 +53,11 @@ def main() -> int:
             try:
                 dfs.append(fbo_debt.load_fbo_debt_docx(year))
             except Exception as exc:  # noqa: BLE001
-                print(f"  {year} (docx): FAILED  ({type(exc).__name__}: {exc})",
-                      file=sys.stderr)
+                print(f"  {year} (docx): FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
         try:
             dfs.append(fbo_debt.load_fbo_debt_pdf(year))
         except Exception as exc:  # noqa: BLE001
-            print(f"  {year} (pdf): FAILED  ({type(exc).__name__}: {exc})",
-                  file=sys.stderr)
+            print(f"  {year} (pdf): FAILED  ({type(exc).__name__}: {exc})", file=sys.stderr)
         if not dfs:
             continue
         df = pd.concat(dfs, ignore_index=True).drop_duplicates(

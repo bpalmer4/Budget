@@ -1,5 +1,6 @@
-"""Extract the BP3 Appendix-A NOM table from every available BP3 PDF
-and write `data/parquet/bp3_nom.parquet`.
+"""Extract the BP3 Appendix-A NOM table from every available BP3 PDF.
+
+Writes `data/parquet/bp3_nom.parquet`.
 
 Run:
     uv run python -m src.extract.extract_bp3_nom
@@ -12,14 +13,12 @@ import pandas as pd
 from src.data.bp3_nom import load_bp3_nom
 from src.utilities.paths import BUDGET_DIR, PARQUET_DIR
 
-
 OUT_PATH = PARQUET_DIR / "bp3_nom.parquet"
 
 
 def main() -> None:
-    years = sorted(
-        p.name for p in BUDGET_DIR.iterdir() if (p / "bp3.pdf").exists()
-    )
+    """Extract the NOM table from every BP3 into bp3_nom.parquet, writing nothing if no table is found."""
+    years = sorted(p.name for p in BUDGET_DIR.iterdir() if (p / "bp3.pdf").exists())
     if not years:
         print("No BP3 PDFs found under data/Budget/")
         return

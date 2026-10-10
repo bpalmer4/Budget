@@ -15,6 +15,7 @@ import re
 
 import pandas as pd
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.table import Table as DocxTable
 
 from src.utilities.paths import fbo_part_path
@@ -39,16 +40,13 @@ def _label(cell_text: str) -> str:
     return cell_text.replace("\xa0", " ").strip()
 
 
-def _find_aggregates_table(doc: Document) -> DocxTable:
+def _find_aggregates_table(doc: DocxDocument) -> DocxTable:
     """Locate the aggregates table by content — robust to year-to-year ordering."""
     for tbl in doc.tables:
         labels = {_label(row.cells[0].text) for row in tbl.rows}
         if all(any(req in label for label in labels) for req in _REQUIRED_LABELS):
             return tbl
-    raise ValueError(
-        f"Could not locate aggregates table (need labels {_REQUIRED_LABELS!r} "
-        f"in some table)."
-    )
+    raise ValueError(f"Could not locate aggregates table (need labels {_REQUIRED_LABELS!r} in some table).")
 
 
 def _column_headers(tbl: DocxTable, n_header_rows: int) -> list[str]:
@@ -66,7 +64,7 @@ def _column_headers(tbl: DocxTable, n_header_rows: int) -> list[str]:
 
 
 def _count_header_rows(tbl: DocxTable) -> int:
-    """A row is a header row iff its first cell is empty.
+    """Count the header rows: a row is a header row iff its first cell is empty.
 
     Holds across every FBO year we've inspected (data rows always start with a label
     like 'Underlying cash balance' or 'Per cent of GDP').
@@ -87,10 +85,7 @@ def _identify_outcome_column(headers: list[str], fiscal_year: str) -> int:
     current-year actuals. Prefer the one whose header text contains this FBO's
     own fiscal year. Fall back to the unique Outcome column if there is only one.
     """
-    candidates = [
-        i for i, h in enumerate(headers)
-        if "Outcome" in h and "Change" not in h and "Estimate" not in h
-    ]
+    candidates = [i for i, h in enumerate(headers) if "Outcome" in h and "Change" not in h and "Estimate" not in h]
     matching = [i for i in candidates if fiscal_year in headers[i]]
     if len(matching) == 1:
         return matching[0]
@@ -171,10 +166,12 @@ def load_fbo_outcome(year: str) -> pd.DataFrame:
             measure = MEASURE_DOLLARS
         if value is None:
             continue
-        rows.append({
-            "fiscal_year": year,
-            "line_item": line_item,
-            "measure": measure,
-            "value": value,
-        })
+        rows.append(
+            {
+                "fiscal_year": year,
+                "line_item": line_item,
+                "measure": measure,
+                "value": value,
+            }
+        )
     return pd.DataFrame(rows)

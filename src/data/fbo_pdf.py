@@ -13,6 +13,7 @@ column if no Change column in headers, else second-to-last).
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pandas as pd
 import pdfplumber
@@ -32,7 +33,7 @@ MEASURE_DOLLARS = "$b"
 MEASURE_PCT_GDP = "Per cent of GDP"
 
 
-def _fbo_pdf_path(year: str):
+def _fbo_pdf_path(year: str) -> Path:
     return OUTCOME_DIR / year / "fbo.pdf"
 
 
@@ -116,9 +117,7 @@ def load_fbo_outcome(year: str) -> pd.DataFrame:
 
     lines = [line.rstrip() for line in text.split("\n")]
 
-    caption_idx = next(
-        i for i, line in enumerate(lines) if _TABLE_CAPTION_RE.search(line)
-    )
+    caption_idx = next(i for i, line in enumerate(lines) if _TABLE_CAPTION_RE.search(line))
 
     # Locate the $b $b ... unit row immediately below the headers
     bb_idx: int | None = None
@@ -135,8 +134,8 @@ def load_fbo_outcome(year: str) -> pd.DataFrame:
 
     rows: list[dict] = []
     current_item: str | None = None
-    for line in lines[bb_idx + 1 :]:
-        line = line.strip()
+    for raw_line in lines[bb_idx + 1 :]:
+        line = raw_line.strip()
         if not line:
             continue
         if _FOOTNOTE_START_RE.match(line):
@@ -162,10 +161,12 @@ def load_fbo_outcome(year: str) -> pd.DataFrame:
 
         if value is None:
             continue
-        rows.append({
-            "fiscal_year": year,
-            "line_item": line_item,
-            "measure": measure,
-            "value": value,
-        })
+        rows.append(
+            {
+                "fiscal_year": year,
+                "line_item": line_item,
+                "measure": measure,
+                "value": value,
+            }
+        )
     return pd.DataFrame(rows)

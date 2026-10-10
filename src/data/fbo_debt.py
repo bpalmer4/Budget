@@ -31,14 +31,7 @@ _NA_TOKENS = {"-", "..", "na", "n.a.", "NA"}
 
 
 def _parse_number(text: str) -> float | None:
-    s = (
-        text.strip()
-        .replace(",", "")
-        .replace("\xa0", "")
-        .replace("–", "-")
-        .replace("—", "-")
-        .replace("−", "-")
-    )
+    s = text.strip().replace(",", "").replace("\xa0", "").replace("–", "-").replace("—", "-").replace("−", "-")
     if not s or s in _NA_TOKENS:
         return None
     if s.startswith("(") and s.endswith(")"):
@@ -52,7 +45,7 @@ def _parse_number(text: str) -> float | None:
 
 
 def _canonical_debt_label(label: str) -> str | None:
-    """Returns 'Gross debt' or 'Net debt' (stripped of footnote) or None."""
+    """Return 'Gross debt' or 'Net debt' (stripped of footnote) or None."""
     m = _DEBT_LABEL_RE.match(label.strip())
     if not m:
         return None
@@ -60,6 +53,7 @@ def _canonical_debt_label(label: str) -> str | None:
 
 
 # ---- DOCX ----
+
 
 def _docx_count_header_rows(tbl: DocxTable, max_header: int = 6) -> int:
     n = 0
@@ -84,10 +78,7 @@ def _docx_column_headers(tbl: DocxTable, n_header: int) -> list[str]:
 
 
 def _identify_outcome_column(headers: list[str], fiscal_year: str) -> int | None:
-    candidates = [
-        i for i, h in enumerate(headers)
-        if "Outcome" in h and "Change" not in h and "Estimate" not in h
-    ]
+    candidates = [i for i, h in enumerate(headers) if "Outcome" in h and "Change" not in h and "Estimate" not in h]
     matching = [i for i in candidates if fiscal_year in headers[i]]
     if len(matching) == 1:
         return matching[0]
@@ -97,8 +88,10 @@ def _identify_outcome_column(headers: list[str], fiscal_year: str) -> int | None
 
 
 def load_fbo_debt_docx(fiscal_year: str) -> pd.DataFrame:
-    """Extract Net/Gross debt outcomes from the FBO Part 1 DOCX (any table that
-    contains them, deduplicated to the latest reading)."""
+    """Extract Net/Gross debt outcomes from the FBO Part 1 DOCX.
+
+    Reads any table that contains them, deduplicated to the latest reading.
+    """
     path = OUTCOME_DIR / fiscal_year / "fbo_01_part_1.docx"
     if not path.exists():
         raise FileNotFoundError(f"No FBO Part 1 DOCX for {fiscal_year}: {path}")
@@ -119,23 +112,24 @@ def load_fbo_debt_docx(fiscal_year: str) -> pd.DataFrame:
             value = _parse_number(row.cells[outcome_col].text)
             if value is None:
                 continue
-            rows.append({
-                "fiscal_year": fiscal_year,
-                "line_item": canonical,
-                "measure": "$b",
-                "value": value,
-            })
+            rows.append(
+                {
+                    "fiscal_year": fiscal_year,
+                    "line_item": canonical,
+                    "measure": "$b",
+                    "value": value,
+                }
+            )
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    return df.drop_duplicates(
-        subset=["fiscal_year", "line_item", "measure"], keep="first"
-    ).reset_index(drop=True)
+    return df.drop_duplicates(subset=["fiscal_year", "line_item", "measure"], keep="first").reset_index(drop=True)
 
 
 # ---- PDF ----
 
 _PDF_UNIT_ROW_RE = re.compile(r"^(\$b|\$m)(?:\s+(\$b|\$m))+\s*$")
+_AMBIGUOUS_MILLIONS_ABOVE = 5000  # with no clear unit row, a value above this is taken as $m
 
 
 def load_fbo_debt_pdf(fiscal_year: str) -> pd.DataFrame:
@@ -175,25 +169,12 @@ def load_fbo_debt_pdf(fiscal_year: str) -> pd.DataFrame:
                 m = re.match(r"^(Net|Gross)\s+debt(?:\s*\([a-z]+\))?\s+(.+)$", stripped)
                 m_govsec = re.match(r"^Government\s+securities(?:\s*\([a-z]+\))?\s+(.+)$", stripped)
                 if m_govsec and not m and last_unit_row is not None:
-                    debt_label = "Gross debt"
-                    m = re.match(r"^()(.+)$", "_ " + m_govsec.group(1))
-                    # Construct a pseudo-match so the rest of the code can keep using `m`.
-                    class _M:
-                        def __init__(self, label_kind: str, tail: str):
-                            self._label_kind = label_kind
-                            self._tail = tail
-                        def group(self, n: int) -> str:
-                            return self._tail if n == 2 else self._label_kind
-                    m = _M("Gross", m_govsec.group(1))
+                    # Match the row rebuilt as "Gross debt ...", so the code below reads it like the newer format.
+                    m = re.match(r"^(Gross)\s+debt\s+(.+)$", "Gross debt " + m_govsec.group(1))
                 if not m or last_unit_row is None:
                     continue
-                # If `m` came from the "Net debt"/"Gross debt" regex, use it; else the
-                # pseudo-match above already encodes the label.
-                debt_label = (
-                    f"{m.group(1).capitalize()} debt"
-                    if hasattr(m, "re")  # real re.Match has .re attribute
-                    else f"{m.group(1).capitalize()} debt"
-                )
+                # Group 1 is "Net" or "Gross" for both row formats.
+                debt_label = f"{m.group(1).capitalize()} debt"
                 # Parse trailing numeric run
                 tokens = m.group(2).split()
                 numbers: list[float | None] = []
@@ -220,12 +201,9 @@ def load_fbo_debt_pdf(fiscal_year: str) -> pd.DataFrame:
                     in_billions = value / 1000.0
                 else:
                     # Ambiguous — assume $m (older format uses millions in detail tables)
-                    in_billions = value / 1000.0 if value > 5000 else value
+                    in_billions = value / 1000.0 if value > _AMBIGUOUS_MILLIONS_ABOVE else value
                 # Prefer the first occurrence (headline section comes before detail)
                 found.setdefault(debt_label, in_billions)
 
-    rows = [
-        {"fiscal_year": fiscal_year, "line_item": k, "measure": "$b", "value": v}
-        for k, v in found.items()
-    ]
+    rows = [{"fiscal_year": fiscal_year, "line_item": k, "measure": "$b", "value": v} for k, v in found.items()]
     return pd.DataFrame(rows)

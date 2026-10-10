@@ -72,8 +72,10 @@ def main() -> int:
             continue
         problems = _check(df, aggregate)
         status = "ok" if not problems else "CHECK FAILED: " + "; ".join(problems)
-        print(f"  {budget_year}: {len(df):3d} rows  (fiscal years "
-              f"{', '.join(sorted(df['fiscal_year'].unique()))})  {status}")
+        print(
+            f"  {budget_year}: {len(df):3d} rows  (fiscal years "
+            f"{', '.join(sorted(df['fiscal_year'].unique()))})  {status}"
+        )
         frames.append(df[df["line_item"] != TOTAL_REVENUE])
 
     if not frames:
