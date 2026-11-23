@@ -21,7 +21,7 @@ Inside each year folder, files use a stable stem regardless of the upstream file
 - `bp1_bs-1.docx` … `bp1_bs-10.docx` — BP1 split per statement, as Word docs. **Only available for 2022-23, 2024-25, 2025-26, 2026-27.** Older budgets do not publish DOCX — the budget.gov.au server silently serves the *current* budget's DOCX as a fallback when an old-year DOCX URL is requested, so any "DOCX" for those years would be misleading.
 - `fbo.pdf` — full Final Budget Outcome PDF (under `data/Outcome/`). Available for all completed fiscal years (2010-11 → 2024-25).
 - `fbo_01_part_1.docx`, `fbo_02_part_2.docx`, `fbo_03_part_3.docx`, `fbo_05_appendix_a.docx`, `fbo_06_appendix_b.docx` — FBO split per part. The `04_*` position is intentionally empty in the upstream archive. **DOCX only from 2019-20 onwards.**
-- Future additions: `myefo.pdf`, etc.
+- `myefo.pdf` — full MYEFO PDF (under `data/MYEFO/`). The year folder is the Budget the MYEFO revises (MYEFO released December 2025 → `2025-26`). Currently 2025-26 only. Per-part DOCX files are published for 2025-26 but not stored; the parser reads the PDF.
 
 **Practical consequence:** BP1 data extraction uses PDF parsing (pdfplumber) for the 13 PDF-only years, and can optionally use DOCX for the 4 DOCX-available years. To keep the parser uniform across years, the default is to use PDF for all 17 budgets.
 

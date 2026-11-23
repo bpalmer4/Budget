@@ -36,7 +36,7 @@ data/
 ├── Budget/{YYYY-YY}/             # BP1 PDF (all 17 budgets, 2010-11 → 2026-27);
 │                                 # BP1 DOCX only for 2022-23, 2024-25, 2025-26, 2026-27
 │                                 # (older budgets don't publish DOCX — see DATA_POLICY.md).
-├── MYEFO/                        # (future) Mid-Year Economic and Fiscal Outlook
+├── MYEFO/{YYYY-YY}/              # MYEFO PDF (2025-26 so far); folder = Budget year revised
 ├── Outcome/{YYYY-YY}/            # FBO PDF (all 15 years) + DOCX parts (2019-20 onwards)
 └── parquet/                      # extracted Parquet — chart scripts read from here
 

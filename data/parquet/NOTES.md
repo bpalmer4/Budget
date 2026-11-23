@@ -12,6 +12,8 @@ One file per source-doc type. Each writes its own parquet under `data/parquet/`.
 | `extract_bp1_overview.py`  | `bp1_overview.parquet`  | BP1 Statement 1 Table 1.1: Major Economic Parameters — extended forecast horizon for the 6 major series |
 | `extract_bp3_nom.py`       | `bp3_nom.parquet`       | BP3 Appendix A Net overseas migration — 17 budgets, longer history than BP1 |
 | `extract_bp1_revenue.py`   | `bp1_revenue.parquet`   | BP1 accrual revenue by head (~35 heads) — reconciliation tables only, so the delivery year + budget year per BP1 |
+| `extract_myefo.py`         | `myefo_estimates.parquet` | MYEFO cash + accrual aggregates (MYEFO rows only; Budget rows duplicate BP1) |
+| `extract_myefo_reconciliation.py` | `myefo_reconciliation.parquet` | MYEFO UCB reconciliation: policy vs parameter changes to receipts/payments, by stage (Budget → PEFO → MYEFO). Extra `stage`/`component` columns |
 | `extract_fbo.py`           | `fbo_outcomes.parquet`  | FBO GFS aggregates outcomes                               |
 | `extract_fbo_revenue.py`   | `fbo_revenue.parquet`   | FBO accrual revenue outcomes by head (~35 heads)          |
 | `extract_fbo_functions.py` | `fbo_functions.parquet` | FBO 14-function outcomes                                  |
@@ -46,6 +48,8 @@ Each extractor has one or more parser modules under `src/data/`:
 | `extract_bp1_economic.py`   | `bp1_economic.py` (PyMuPDF outline; Treasury fractions like `1 3/4` → 1.75) |
 | `extract_bp3_nom.py`        | `bp3_nom.py` (BP3 Appendix A NOM table; handles two column-label formats across years) |
 | `extract_bp1_revenue.py`    | `bp1_revenue.py`, `revenue_heads.py` (shared label map + sum check) |
+| `extract_myefo.py`          | `myefo_aggregates.py` (MYEFO / PEFO / Budget sub-rows; alternating $b and % GDP columns) |
+| `extract_myefo_reconciliation.py` | `myefo_reconciliation.py` ($m → $b; Payments signs as published) |
 | `extract_fbo.py`            | `fbo_docx.py`, `fbo_pdf.py`        |
 | `extract_fbo_revenue.py`    | `fbo_revenue.py`, `revenue_heads.py` |
 | `extract_fbo_functions.py`  | `fbo_function.py`                  |
